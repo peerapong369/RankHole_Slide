@@ -1,0 +1,17 @@
+conda create -n FastAPI python=3.6.13 Jupyter
+conda activate FastAPI
+
+conda install -c conda-forge uvicorn-standard
+conda install -c conda-forge fastapi
+conda install -c anaconda sqlalchemy
+conda install -c conda-forge python-jose
+conda install -c conda-forge python-decouple
+conda install -c anaconda passlib
+pip install window-curses
+pip install python-multipart
+
+
+uvicon main:app --reload
+uvicon main:app --reload --host 192.168.16.xxx
+
+
