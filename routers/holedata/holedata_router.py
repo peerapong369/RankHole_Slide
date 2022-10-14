@@ -40,6 +40,11 @@ def rankdatabyproduct_lot(product:str, lot:str, db:Session=Depends(get_db)):
     return holedata_controller.databygroup_lot(db, product, lot)
 
 
+@router.get("/holedataanalysisby/{product},{lot},{sheet}")
+def rankdatabyproduct_lot(product:str, lot:str, sheet:float,db:Session=Depends(get_db)):
+    return holedata_controller.databygroup_lot_analysis(db, product, lot, sheet)
+
+
 @router.get("/lotsummarybyprod/{product}")
 def lotsummarybyproduct(product:str, db:Session=Depends(get_db)):
     return holedata_controller.machineresultby_prod(db,product)

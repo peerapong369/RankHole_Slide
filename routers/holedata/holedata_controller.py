@@ -1,7 +1,9 @@
 from cProfile import label
+from itertools import groupby
+from turtle import speed
 from sqlalchemy.orm import Session
 from fastapi.responses import JSONResponse
-from sqlalchemy.sql import func
+from sqlalchemy.sql import func, text
 from datetime import datetime, timedelta
 
 from models.holedata.holedata_model import DbHoledata, HoledataBase
@@ -58,7 +60,8 @@ def create(db: Session, request: HoledataBase):
         HoleSlide=request.HoleSlide,
         HoleSize=request.HoleSize,
         DBSnap=request.DBSnap,
-        Recheck=request.Recheck
+        Recheck=request.Recheck,
+        speed=request.speed
     )
     db.add(new_holedata)
     db.commit()
@@ -89,11 +92,80 @@ def product_group(db: Session):
     return db.query(DbHoledata).group_by(DbHoledata.Product).all()
 
 def productlot_group(db: Session, product:str):
-    return db.query(DbHoledata).filter(DbHoledata.Product==product).group_by(DbHoledata.LOT).all()
+    return db.query(
+        DbHoledata
+    ).filter(
+        DbHoledata.Product==product
+    ).group_by(
+        DbHoledata.LOT
+    ).order_by(
+        func.max(DbHoledata.created_date).desc()
+    ).all()
 
 
 def databygroup_lot(db: Session, product:str, lot:str):
     return db.query(DbHoledata).filter(DbHoledata.Product==product).filter(DbHoledata.LOT==lot).all()
+
+
+def databygroup_lot_analysis(db: Session, product:str, lot:str, sheet_permin:float):
+    return db.query(
+        func.strftime("%Y-%m-%d %H:00:00", DbHoledata.created_date).label('Datetime'),
+        func.max(DbHoledata.created_date).label("max_datetime"),
+        func.min(DbHoledata.created_date).label("min_datetime"),
+        ((func.strftime("%s", func.max(DbHoledata.created_date))-func.strftime("%s", func.min(DbHoledata.created_date)))/60).label("min."),
+        (func.sum(
+            func.IIf(
+                DbHoledata.speed>(sheet_permin*2),
+                func.IIf(
+                    DbHoledata.speed<=60,
+                    DbHoledata.speed,0
+                ),
+                0
+            ))/60
+        ).label('Unstable1'),
+        (func.sum(
+            func.IIf(
+                DbHoledata.speed>60,
+                func.IIf(
+                    DbHoledata.speed<=600,
+                    DbHoledata.speed,0
+                ),
+                0
+            ))/60
+        ).label('Unstable2'),
+        (func.sum(
+            func.IIf(
+                DbHoledata.speed>600,
+                func.IIf(
+                    DbHoledata.speed<=3600,
+                    DbHoledata.speed,0
+                ),
+                0
+            ))/60
+        ).label('minorstop'),
+        (func.sum(
+            func.IIf(
+                DbHoledata.speed>3600,
+                func.IIf(
+                    DbHoledata.speed<=7200,
+                    DbHoledata.speed,0
+                ),
+                0
+            ))/60
+        ).label('mainstop'),
+        (func.sum(
+            func.IIf(
+                DbHoledata.speed>7200,DbHoledata.speed,0
+            ))/60
+        ).label('breakdown'),
+    ).filter(
+        DbHoledata.Product==product
+    ).filter(
+        DbHoledata.LOT==lot
+    ).group_by(
+        func.strftime("%Y-%m-%d %H:00:00", DbHoledata.created_date)
+    ).all()
+    
 
 
 def machineresultby_prod(db: Session, product:str):
@@ -102,7 +174,7 @@ def machineresultby_prod(db: Session, product:str):
         func.count(DbHoledata.id).label('Total'),
         func.min(DbHoledata.created_date).label('Start_date'),
         func.max(DbHoledata.created_date).label('End_date'),
-        (func.count(DbHoledata.id) - (func.sum(DbHoledata.HoleSlide)-func.sum(DbHoledata.HoleSlide)-func.sum(DbHoledata.DBSnap)-func.sum(DbHoledata.Recheck))).label('OK'),
+        (func.count(DbHoledata.id) - (func.sum(DbHoledata.HoleSlide)+func.sum(DbHoledata.HoleSize)+func.sum(DbHoledata.DBSnap)+func.sum(DbHoledata.Recheck))).label('OK'),
         func.sum(DbHoledata.HoleSlide).label('NG_Hole_Slide'),
         func.sum(DbHoledata.HoleSize).label('NG_Hole_Size'),
         func.sum(DbHoledata.DBSnap).label('NG_DBSnap'),
@@ -111,6 +183,8 @@ def machineresultby_prod(db: Session, product:str):
         DbHoledata.Product==product
     ).group_by(
         DbHoledata.LOT
+    ).order_by(
+        func.max(DbHoledata.created_date).desc()
     ).all()
 
 

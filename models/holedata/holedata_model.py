@@ -62,6 +62,7 @@ class DbHoledata(Base):
     HoleSize =  Column(Integer, unique=False)
     DBSnap =  Column(Integer, unique=False)
     Recheck =  Column(Integer, unique=False)
+    speed = Column(FLOAT, unique=False)
     created_date = Column(DateTime, default=datetime.now)
     update_date = Column(
         DateTime, nullable=False, default=datetime.now, onupdate=datetime.now
@@ -118,6 +119,7 @@ class HoledataBase(BaseModel):
     HoleSize : int
     DBSnap : int
     Recheck : int
+    speed : float
 
 
 
@@ -173,6 +175,7 @@ class HoledataDisplayBase(BaseModel):
     HoleSize : int
     DBSnap : int
     Recheck : int
+    speed : float
     created_date: datetime
     update_date: datetime
 
