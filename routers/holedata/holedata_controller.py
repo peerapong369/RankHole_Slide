@@ -107,11 +107,15 @@ def databygroup_lot(db: Session, product:str, lot:str):
     return db.query(DbHoledata).filter(DbHoledata.Product==product).filter(DbHoledata.LOT==lot).all()
 
 
-def databygroup_lot_analysis(db: Session, product:str, lot:str, sheet_permin:float):
+def databygroup_lot_analysis(db: Session, lot:str, sheet_permin:float):
+    d1 = [5,6,7,17,18,19]
+    dateStart = func.min(DbHoledata.created_date).label("max_datetime")
+    dateEnd = func.max(DbHoledata.created_date).label("max_datetime")
     return db.query(
         func.strftime("%Y-%m-%d %H:00:00", DbHoledata.created_date).label('Datetime'),
-        func.max(DbHoledata.created_date).label("max_datetime"),
-        func.min(DbHoledata.created_date).label("min_datetime"),
+        dateEnd.label("max_datetime"),  
+        dateStart.label("min_datetime"),
+        (func.max(DbHoledata.speed)/60).label("maxspeed"),
         ((func.strftime("%s", func.max(DbHoledata.created_date))-func.strftime("%s", func.min(DbHoledata.created_date)))/60).label("min."),
         (func.sum(
             func.IIf(
@@ -155,11 +159,20 @@ def databygroup_lot_analysis(db: Session, product:str, lot:str, sheet_permin:flo
         ).label('mainstop'),
         (func.sum(
             func.IIf(
-                DbHoledata.speed>7200,DbHoledata.speed,0
+                func.strftime("%H", DbHoledata.created_date) not in d1,
+                func.IIf(
+                    DbHoledata.speed>7200,DbHoledata.speed,0
+                ),0
             ))/60
         ).label('breakdown'),
-    ).filter(
-        DbHoledata.Product==product
+        (func.sum(
+            func.IIf(
+                func.strftime("%H", DbHoledata.created_date) in d1,
+                func.IIf(
+                    DbHoledata.speed>7200,DbHoledata.speed,0
+                ),0
+            ))/60
+        ).label('waitchangeshift')
     ).filter(
         DbHoledata.LOT==lot
     ).group_by(
@@ -188,27 +201,185 @@ def machineresultby_prod(db: Session, product:str):
     ).all()
 
 
-def prodlotresultperhour(db:Session, product:str, lot:str):
+def machineresultby_datetime(db: Session, speed: float, start: str, end: str):
+    d1 = [5,6,7,17,18,19]
     return db.query(
-        func.strftime("%Y-%m-%d %H:00:00", DbHoledata.created_date).label('Datetime'),
-        (func.count(DbHoledata.id) - (func.sum(DbHoledata.HoleSlide)-func.sum(DbHoledata.HoleSlide)-func.sum(DbHoledata.DBSnap)-func.sum(DbHoledata.Recheck))).label('OK'),
+        DbHoledata.Product.label('product'),
+        DbHoledata.LOT.label('lot'),
+        func.count(DbHoledata.id).label('Total'),
+        func.min(DbHoledata.created_date).label('Start_date'),
+        func.max(DbHoledata.created_date).label('End_date'),
+        (func.count(DbHoledata.id) - (func.sum(DbHoledata.HoleSlide)+func.sum(DbHoledata.HoleSize)+func.sum(DbHoledata.DBSnap)+func.sum(DbHoledata.Recheck))).label('OK'),
         func.sum(DbHoledata.HoleSlide).label('NG_Hole_Slide'),
         func.sum(DbHoledata.HoleSize).label('NG_Hole_Size'),
         func.sum(DbHoledata.DBSnap).label('NG_DBSnap'),
         func.sum(DbHoledata.Recheck).label('Recheck'),
-    ).filter(        
-        DbHoledata.Product==product
+        (func.max(DbHoledata.speed)/60).label('maxspeed'),
+        (func.sum(
+            func.IIf(
+                DbHoledata.speed>(speed*2),
+                func.IIf(
+                    DbHoledata.speed<=60,
+                    DbHoledata.speed,0
+                ),
+                0
+            ))/60
+        ).label('Unstable1'),
+        (func.sum(
+            func.IIf(
+                DbHoledata.speed>60,
+                func.IIf(
+                    DbHoledata.speed<=600,
+                    DbHoledata.speed,0
+                ),
+                0
+            ))/60
+        ).label('Unstable2'),
+        (func.sum(
+            func.IIf(
+                DbHoledata.speed>600,
+                func.IIf(
+                    DbHoledata.speed<=3600,
+                    DbHoledata.speed,0
+                ),
+                0
+            ))/60
+        ).label('minorstop'),
+        (func.sum(
+            func.IIf(
+                DbHoledata.speed>3600,
+                func.IIf(
+                    DbHoledata.speed<=7200,
+                    DbHoledata.speed,0
+                ),
+                0
+            ))/60
+        ).label('mainstop'),
+        (func.sum(
+            func.IIf(
+                func.strftime("%H", DbHoledata.created_date) not in d1,
+                func.IIf(
+                    DbHoledata.speed>7200,DbHoledata.speed,0
+                ),0
+            ))/60
+        ).label('breakdown'),
+        (func.sum(
+            func.IIf(
+                func.strftime("%H", DbHoledata.created_date) in d1,
+                func.IIf(
+                    DbHoledata.speed>7200,DbHoledata.speed,0
+                ),0
+            ))/60
+        ).label('waitchangeshift')
+    ).filter(
+        DbHoledata.created_date.between(start, end)
+    ).group_by(
+        DbHoledata.LOT
+    ).order_by(
+        DbHoledata.id.asc()
+    ).all()
+
+
+
+
+def machineresultby_datetime_hour(db: Session, speed: float, start: str, end: str):
+    d1 = [5,6,7,17,18,19]
+    return db.query(
+        DbHoledata.Product.label('product'),
+        DbHoledata.LOT.label('lot'),
+        func.strftime("%Y-%m-%d %H:00:00", DbHoledata.created_date).label('Datetime'),
+        func.count(DbHoledata.id).label('Total'),
+        (func.count(DbHoledata.id) - (func.sum(DbHoledata.HoleSlide)+func.sum(DbHoledata.HoleSize)+func.sum(DbHoledata.DBSnap)+func.sum(DbHoledata.Recheck))).label('OK'),
+        func.sum(DbHoledata.HoleSlide).label('NG_Hole_Slide'),
+        func.sum(DbHoledata.HoleSize).label('NG_Hole_Size'),
+        func.sum(DbHoledata.DBSnap).label('NG_DBSnap'),
+        func.sum(DbHoledata.Recheck).label('Recheck'),
+        (func.max(DbHoledata.speed)/60).label('maxspeed'),
+        (func.sum(
+            func.IIf(
+                DbHoledata.speed>(speed*2),
+                func.IIf(
+                    DbHoledata.speed<=60,
+                    DbHoledata.speed,0
+                ),
+                0
+            ))/60
+        ).label('Unstable1'),
+        (func.sum(
+            func.IIf(
+                DbHoledata.speed>60,
+                func.IIf(
+                    DbHoledata.speed<=600,
+                    DbHoledata.speed,0
+                ),
+                0
+            ))/60
+        ).label('Unstable2'),
+        (func.sum(
+            func.IIf(
+                DbHoledata.speed>600,
+                func.IIf(
+                    DbHoledata.speed<=3600,
+                    DbHoledata.speed,0
+                ),
+                0
+            ))/60
+        ).label('minorstop'),
+        (func.sum(
+            func.IIf(
+                DbHoledata.speed>3600,
+                func.IIf(
+                    DbHoledata.speed<=7200,
+                    DbHoledata.speed,0
+                ),
+                0
+            ))/60
+        ).label('mainstop'),
+        (func.sum(
+            func.IIf(
+                func.strftime("%H", DbHoledata.created_date) not in d1,
+                func.IIf(
+                    DbHoledata.speed>7200,DbHoledata.speed,0
+                ),0
+            ))/60
+        ).label('breakdown'),
+        (func.sum(
+            func.IIf(
+                func.strftime("%H", DbHoledata.created_date) in d1,
+                func.IIf(
+                    DbHoledata.speed>7200,DbHoledata.speed,0
+                ),0
+            ))/60
+        ).label('waitchangeshift')
+    ).filter(
+        DbHoledata.created_date.between(start, end)
+    ).group_by(
+        func.strftime("%Y-%m-%d %H:00:00", DbHoledata.created_date).label('Datetime')
+    ).order_by(
+        DbHoledata.id.asc()
+    ).all()
+
+
+
+
+
+def prodlotresultperhour(db:Session, lot:str):
+    return db.query(
+        func.strftime("%Y-%m-%d %H:00:00", DbHoledata.created_date).label('Datetime'),
+        (func.count(DbHoledata.id) - (func.sum(DbHoledata.HoleSlide)+func.sum(DbHoledata.HoleSlide)+func.sum(DbHoledata.DBSnap)+func.sum(DbHoledata.Recheck))).label('OK'),
+        func.sum(DbHoledata.HoleSlide).label('NG_Hole_Slide'),
+        func.sum(DbHoledata.HoleSize).label('NG_Hole_Size'),
+        func.sum(DbHoledata.DBSnap).label('NG_DBSnap'),
+        func.sum(DbHoledata.Recheck).label('Recheck'),
     ).filter(
         DbHoledata.LOT==lot
     ).group_by(
         func.strftime("%Y-%m-%d %H:00:00", DbHoledata.created_date)
     ).all()
 
-def prodlotresultperhour_gruopdate(db:Session, product:str, lot:str):
+def prodlotresultperhour_gruopdate(db:Session, lot:str):
     return db.query(
         func.strftime("%Y-%m-%d", DbHoledata.created_date).label('Datetime'),
-    ).filter(        
-        DbHoledata.Product==product
     ).filter(
         DbHoledata.LOT==lot
     ).group_by(
@@ -216,16 +387,14 @@ def prodlotresultperhour_gruopdate(db:Session, product:str, lot:str):
     ).all()
 
 
-def prodlotresultpermin(db:Session, product:str, lot:str,Date:str, hour:str):
+def prodlotresultpermin(db:Session, lot:str,Date:str, hour:str):
     return db.query(
         func.strftime("%Y-%m-%d %H:%M:00", DbHoledata.created_date).label('Datetime'),
-        (func.count(DbHoledata.id) - (func.sum(DbHoledata.HoleSlide)-func.sum(DbHoledata.HoleSlide)-func.sum(DbHoledata.DBSnap)-func.sum(DbHoledata.Recheck))).label('OK'),
+        (func.count(DbHoledata.id) - (func.sum(DbHoledata.HoleSlide)+func.sum(DbHoledata.HoleSlide)+func.sum(DbHoledata.DBSnap)+func.sum(DbHoledata.Recheck))).label('OK'),
         func.sum(DbHoledata.HoleSlide).label('NG_Hole_Slide'),
         func.sum(DbHoledata.HoleSize).label('NG_Hole_Size'),
         func.sum(DbHoledata.DBSnap).label('NG_DBSnap'),
         func.sum(DbHoledata.Recheck).label('Recheck'),
-    ).filter(        
-        DbHoledata.Product==product
     ).filter(
         DbHoledata.LOT==lot
     ).filter(
@@ -234,4 +403,24 @@ def prodlotresultpermin(db:Session, product:str, lot:str,Date:str, hour:str):
         func.strftime("%H", DbHoledata.created_date)==hour
     ).group_by(
         func.strftime("%Y-%m-%d %H:%M:00", DbHoledata.created_date)
+    ).all()
+
+
+def productivity_bydate(start: str, end: str, speed:float, db:Session):
+    return db.query(
+        func.strftime("%Y-%m-%d 00:00:00", DbHoledata.created_date).label('Date'),
+        func.count(DbHoledata.id).label('Total'),
+        (func.count(DbHoledata.id) - (func.sum(DbHoledata.HoleSlide)+func.sum(DbHoledata.HoleSize)+func.sum(DbHoledata.DBSnap)+func.sum(DbHoledata.Recheck))).label('OK'),
+        func.sum(DbHoledata.HoleSlide).label('NG_Hole_Slide'),
+        func.sum(DbHoledata.HoleSize).label('NG_Hole_Size'),
+        func.sum(DbHoledata.DBSnap).label('NG_DBSnap'),
+        func.sum(DbHoledata.Recheck).label('Recheck')
+    ).filter(
+        DbHoledata.created_date.between(start, end)
+    ).filter(
+        DbHoledata.speed >= speed/1.5
+    ).group_by(
+        func.strftime("%Y-%m-%d 00:00:00", DbHoledata.created_date)
+    ).order_by(
+        DbHoledata.id.asc()
     ).all()

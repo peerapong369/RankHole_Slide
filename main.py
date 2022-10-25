@@ -4,13 +4,13 @@ from models.database import engine
 #from models.inventory import inventory_model
 from models.users import users_model
 #from models.sensor import sensor_model
-from models.holedata import holedata_model, calibration_model, offset_model
+from models.holedata import holedata_model, calibration_model, offset_model, holedatachange_model
 from models.machine import status_model, calibration_alarm_model
 
 
 #from routers.inventory import inventory_rounter
 from routers.users import user_router
-from routers.holedata import holedata_router, calibration_router, offset_router
+from routers.holedata import holedata_router, calibration_router, offset_router, holedatachange_router
 #from routers.auth import authen_router
 #from routers.sensor import sensor_rounter
 from routers.machine import status_router, calibration_alarm_router
@@ -26,6 +26,7 @@ app.include_router(calibration_router.router)
 app.include_router(offset_router.router)
 app.include_router(status_router.router)
 app.include_router(calibration_alarm_router.router)
+app.include_router(holedatachange_router.router)
 
 
 
@@ -42,3 +43,4 @@ calibration_model.Base.metadata.create_all(engine)
 offset_model.Base.metadata.create_all(engine)
 status_model.Base.metadata.create_all(engine)
 calibration_alarm_model.Base.metadata.create_all(engine)
+holedatachange_model.Base.metadata.create_all(engine)
